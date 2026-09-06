@@ -23,27 +23,36 @@ button, input, select, textarea {
 
 /* ── Print: only the Invoice modal body is printed ── */
 @media print {
-  @page { size: A4 portrait; margin: 0; }
+  @page {
+    size: A4 portrait;
+    margin: 12mm 10mm 12mm 10mm !important;
+  }
 
-  html, body { height: auto !important; overflow: visible !important; margin: 0 !important; padding: 0 !important; }
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
   body * { visibility: hidden !important; }
   #invoice-print-area, #invoice-print-area * { visibility: visible !important; }
 
   #invoice-print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 210mm;
+    position: static;
+    left: auto;
+    top: auto;
+    width: auto;
     min-height: auto !important;
-    max-height: 297mm !important;
+    max-height: none !important;
     height: auto !important;
-    overflow: hidden !important;
-    page-break-after: avoid !important;
-    page-break-inside: avoid !important;
-    break-after: avoid !important;
-    break-inside: avoid !important;
+    overflow: visible !important;
+    page-break-after: auto !important;
+    page-break-inside: auto !important;
+    break-after: auto !important;
+    break-inside: auto !important;
     transform: none !important;
-    padding: 16px 20px !important;
+    padding: 0 !important;
     box-shadow: none !important;
     border: none !important;
     margin: 0 !important;
@@ -68,8 +77,10 @@ button, input, select, textarea {
     display: none !important;
   }
 
-  /* Prevent any section from splitting across pages */
-  #invoice-print-area > div {
+  /* Prevent awkward mid-row or mid-card cuts */
+  .itemized-table tr,
+  .financial-summary-card,
+  .bank-details-block {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
