@@ -281,7 +281,7 @@ export default function InvoiceModal({ project, totals, onClose }) {
     else setPaymentStatus("UNPAID");
   }, [previouslyReceived, data.grandTotal]);
 
-  const companyLogo = "/PaintShip B W Logo.png";
+  const companyLogo = "/Paintship B-W-Logo.png";
   const companyAddr = companyAddress || "123 Corporate Plaza, MG Road, Mumbai - 400001, Maharashtra";
 
   const upiString = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=Paintship`;
@@ -323,6 +323,8 @@ export default function InvoiceModal({ project, totals, onClose }) {
           border: "1px solid #E2E8F0",
           overflow: "hidden",
           margin: "0 auto",
+          pageBreakInside: "avoid",
+          breakInside: "avoid",
           color: "#0F172A",
           fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
           fontSize: "11px",
@@ -335,7 +337,7 @@ export default function InvoiceModal({ project, totals, onClose }) {
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "8px" }}>
                 <div style={{ width: 120, height: 120, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #E2E8F0", borderRadius: 8, background: "#fff", padding: 6, flexShrink: 0 }}>
-                  <img src={companyLogo} alt="PaintShip" crossOrigin="anonymous" onError={(e) => { if (!e.target.dataset.fb) { e.target.dataset.fb = "1"; e.target.src = '/PaintShip B Logo.png'; } }} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                  <img src={companyLogo} alt="PaintShip" crossOrigin="anonymous" onError={(e) => { if (!e.target.dataset.fb) { e.target.dataset.fb = "1"; e.target.src = '/Paintship B-Logo.png'; } }} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                 </div>
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   <div style={{ fontSize: 20, fontWeight: 700, color: "#0F1E3C", lineHeight: 1.2 }}>{companyName}</div>

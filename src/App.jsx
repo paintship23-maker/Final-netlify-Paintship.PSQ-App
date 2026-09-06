@@ -1435,7 +1435,7 @@ function PaintShipLogo({ size=72 }) {
     <img
       src="/Paintship B-Logo.png"
       alt="PaintShip"
-      onError={(e) => { if (!e.target.dataset.fallback) { e.target.dataset.fallback = "1"; e.target.src = "/PaintShip B W Logo.png"; } }}
+      onError={(e) => { if (!e.target.dataset.fallback) { e.target.dataset.fallback = "1"; e.target.src = "/Paintship B-Logo.png"; } }}
       style={{ height: size, width: "auto", objectFit: "contain", display: "block" }}
     />
   );
@@ -6680,7 +6680,7 @@ function LoginScreen({ onLogin }) {
     <div style={{width:"100%",maxWidth:400}}>
       <div style={{textAlign:"center",marginBottom:32}}>
         <div style={{display:"flex",justifyContent:"center"}}>
-          <img src="/PSQ-Logo.png" alt="PSQ" onError={(e) => { if (!e.target.dataset.fallback) { e.target.dataset.fallback = "1"; e.target.src = "/PaintShip B W Logo.png"; } }} style={{width:120,maxWidth:"120px",height:"auto",objectFit:"contain",display:"block"}}/>
+          <img src="/PSQ-Logo.png" alt="PSQ" onError={(e) => { if (!e.target.dataset.fallback) { e.target.dataset.fallback = "1"; e.target.src = "/Paintship B-Logo.png"; } }} style={{width:120,maxWidth:"120px",height:"auto",objectFit:"contain",display:"block"}}/>
         </div>
       </div>
       <div style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,padding:"28px 24px",boxShadow:"0 24px 56px rgba(0,0,0,0.45)"}}>
@@ -7476,16 +7476,13 @@ function generatePDF(project) {
   // ── Logo resolution: convert public-path logos to data URIs so they embed
   //    inside the Blob-generated HTML (relative paths won't resolve in a blob: URL).
   //    Custom uploaded logos are already base64 data URIs in localStorage.
-  const presetLogoMap = { dark: "/PaintShip B W Logo.png", light: "/Paintship W-W-Logo.png", square: "/PSQ-Logo.png" };
-  const presetChoice = (typeof localStorage !== "undefined" && localStorage.getItem("pdf_logo_preset")) || "dark";
-  const savedLogoSrc = (typeof localStorage !== "undefined" && localStorage.getItem("custom_pdf_logo")) || presetLogoMap[presetChoice] || "/PaintShip B W Logo.png";
-  let logoSrc = savedLogoSrc;
-  // If it's a relative path (not a data: URI), fetch and convert to base64 data URI
-  if (logoSrc && !logoSrc.startsWith("data:") && typeof fetch !== "undefined") {
+  // Hardcoded to Option B (white/light logo for dark navy header)
+  let logoSrc = "/Paintship W-W-Logo.png";
+  // Convert to base64 data URI so it embeds inside the Blob-generated HTML
+  if (!logoSrc.startsWith("data:") && typeof fetch !== "undefined") {
     try {
-      // Synchronous XHR to get the image as base64 before building the HTML
       const xhr = new XMLHttpRequest();
-      xhr.open("GET", logoSrc, false); // synchronous
+      xhr.open("GET", logoSrc, false);
       xhr.overrideMimeType("image/png");
       xhr.responseType = "arraybuffer";
       xhr.send();
@@ -7493,12 +7490,9 @@ function generatePDF(project) {
         const bytes = new Uint8Array(xhr.response);
         let binary = "";
         for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        const ext = logoSrc.split(".").pop().toLowerCase();
-        const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
-        logoSrc = `data:${mime};base64,${btoa(binary)}`;
+        logoSrc = `data:image/png;base64,${btoa(binary)}`;
       }
     } catch (e) {
-      // Fallback: use the path directly — may not render in blob but won't crash
       console.warn("Logo data-URI conversion failed, using path:", logoSrc);
     }
   }
@@ -7532,8 +7526,9 @@ thead{display:table-header-group}
 td{word-break:break-word;overflow-wrap:anywhere}
 .footer{margin-top:20px;text-align:center;font-size:10px;color:#667085;padding-top:12px;border-top:1px solid #E2E5E9;page-break-inside:avoid;break-inside:avoid}
 @media print{
+  @page{margin:0;size:auto}
+  body{margin:1.5cm;-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
   .np{display:none!important}
-  body{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
   .page{max-width:none;padding:0}
   .hdr{border-radius:0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   h2{page-break-inside:avoid;break-inside:avoid}
@@ -7743,7 +7738,7 @@ export default function App() {
   const [showPinModal,setShowPinModal]=useState(false);
   const [showMasterRates,setShowMasterRates]=useState(false);
   const [masterRatesVersion,setMasterRatesVersion]=useState(0); // bump to force rate refresh
-  const [customPdfLogo, setCustomPdfLogo] = useState(() => localStorage.getItem("custom_pdf_logo") || null);
+
   // RUNTIME-FIX: project is null until login (useState(null) above, set only after
   // LoginScreen's onLogin fires). This derivation used to read project.floors directly,
   // which ran on every render — including the pre-login render — and crashed before the
@@ -7769,19 +7764,7 @@ export default function App() {
   const [wizStep,setWizStep]=useState(0);
   const [refreshKey,setRefreshKey]=useState(0);
   const forceRecalc = () => setRefreshKey(k => k + 1);
-  const handleLogoUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const base64 = ev.target?.result;
-      if (base64) {
-        localStorage.setItem("custom_pdf_logo", base64);
-        setCustomPdfLogo(base64);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
+
 
   useEffect(()=>{ if(user) {
     // CRITICAL: Purge any projects with NULL or broken schemas from localStorage if needed
@@ -9097,54 +9080,7 @@ loadAllProjects().then(projects => {
               ))}
             </div>
 
-{/* PDF Logo — preset selector + custom uploader with localStorage persistence */}
-            <div style={{...CARD,marginBottom:12}}>
-              <div style={{fontSize:12,fontWeight:800,color:C.navy,marginBottom:10}}>PDF Logo</div>
-              <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-start",marginBottom:10}}>
-                {/* Preset A: Dark logo for white headers */}
-                <button onClick={() => { localStorage.removeItem("custom_pdf_logo"); setCustomPdfLogo(null); localStorage.setItem("pdf_logo_preset", "dark"); }}
-                  style={{flex:"1 1 120px",maxWidth:150,border:`2px solid ${!customPdfLogo && (localStorage.getItem("pdf_logo_preset")||"dark")==="dark"?C.navy:C.border}`,borderRadius:10,padding:10,background:!customPdfLogo && (localStorage.getItem("pdf_logo_preset")||"dark")==="dark"?C.blueL:"#fff",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
-                  <div style={{height:48,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"#fff",borderRadius:6,border:"1px solid #E2E8F0"}}>
-                    <img src="/PaintShip B W Logo.png" alt="Dark" style={{height:36,width:"auto",objectFit:"contain"}} />
-                  </div>
-                  <div style={{fontSize:9,fontWeight:700,color:C.navy,textAlign:"center"}}>Option A: Dark Logo</div>
-                  <div style={{fontSize:8,color:"#888"}}>For white headers</div>
-                </button>
-                {/* Preset B: Light/white logo for dark headers */}
-                <button onClick={() => { localStorage.removeItem("custom_pdf_logo"); setCustomPdfLogo(null); localStorage.setItem("pdf_logo_preset", "light"); }}
-                  style={{flex:"1 1 120px",maxWidth:150,border:`2px solid ${!customPdfLogo && localStorage.getItem("pdf_logo_preset")==="light"?C.navy:C.border}`,borderRadius:10,padding:10,background:!customPdfLogo && localStorage.getItem("pdf_logo_preset")==="light"?C.blueL:"#fff",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
-                  <div style={{height:48,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"#17233C",borderRadius:6}}>
-                    <img src="/Paintship W-W-Logo.png" alt="Light" onError={(e)=>{e.target.src="/Paintship W-Logo.png";}} style={{height:36,width:"auto",objectFit:"contain"}} />
-                  </div>
-                  <div style={{fontSize:9,fontWeight:700,color:C.navy,textAlign:"center"}}>Option B: Light Logo</div>
-                  <div style={{fontSize:8,color:"#888"}}>For dark headers</div>
-                </button>
-                {/* Preset C: Vertical/Square compact logo */}
-                <button onClick={() => { localStorage.removeItem("custom_pdf_logo"); setCustomPdfLogo(null); localStorage.setItem("pdf_logo_preset", "square"); }}
-                  style={{flex:"1 1 120px",maxWidth:150,border:`2px solid ${!customPdfLogo && localStorage.getItem("pdf_logo_preset")==="square"?C.navy:C.border}`,borderRadius:10,padding:10,background:!customPdfLogo && localStorage.getItem("pdf_logo_preset")==="square"?C.blueL:"#fff",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
-                  <div style={{height:48,width:48,display:"flex",alignItems:"center",justifyContent:"center",background:"#fff",borderRadius:6,border:"1px solid #E2E8F0"}}>
-                    <img src="/PSQ-Logo.png" alt="Square" style={{height:40,width:40,objectFit:"contain"}} />
-                  </div>
-                  <div style={{fontSize:9,fontWeight:700,color:C.navy,textAlign:"center"}}>Option C: Compact</div>
-                  <div style={{fontSize:8,color:"#888"}}>Vertical / square</div>
-                </button>
-              </div>
-              {/* Custom upload + status */}
-              <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",borderTop:`1px solid ${C.border}`,paddingTop:10}}>
-                {customPdfLogo && (
-                  <div style={{height:48,width:100,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6,border:"1px solid #E2E8F0",background:"#fff",overflow:"hidden"}}>
-                    <img src={customPdfLogo} alt="Custom" style={{height:40,width:"auto",objectFit:"contain"}} />
-                  </div>
-                )}
-                <input type="file" accept="image/*" id="logo-upload-input" style={{display:'none'}} onChange={handleLogoUpload} />
-                <button onClick={() => document.getElementById('logo-upload-input')?.click()} style={{background:C.blueL,color:C.blue,borderRadius:20,padding:"7px 14px",fontSize:11,fontWeight:700,border:`1px solid ${C.blue}33`,cursor:"pointer"}}>
-                  📷 Upload / Change Custom Logo
-                </button>
-                <div style={{fontSize:11,color:"#888"}}>
-                  {customPdfLogo ? "Custom logo active — overrides preset" : "Preset logo selected — used on every quotation."}
-                </div>
-              </div>
-            </div>
+
 
             {(dwGrandTotal+wpGrandTotal+txGrandTotal+polishCalc.total+doorWindowCalc.total+wallpaperCalc.total+textureCalc.total)>0&&<div style={{...CARD,background:C.orangeL,border:`1px solid ${C.orange}33`}}>
               <div style={{fontSize:12,fontWeight:800,color:C.navy,marginBottom:8}}>Specialty Items</div>
