@@ -25,6 +25,7 @@ button, input, select, textarea {
 @media print {
   @page { size: A4 portrait; margin: 0; }
 
+  html, body { height: auto !important; overflow: visible !important; }
   body * { visibility: hidden !important; }
   #invoice-print-area, #invoice-print-area * { visibility: visible !important; }
 
@@ -32,22 +33,58 @@ button, input, select, textarea {
     position: absolute;
     left: 0;
     top: 0;
-    width: 100%;
+    width: 210mm;
+    min-height: auto !important;
     max-height: 297mm !important;
-    height: 100vh !important;
-    overflow: hidden !important;
+    height: auto !important;
+    overflow: visible !important;
     page-break-after: avoid !important;
     page-break-inside: avoid !important;
-    transform: scale(0.92);
-    transform-origin: top center;
+    break-after: avoid !important;
+    break-inside: avoid !important;
+    transform: none !important;
     padding: 16px 20px !important;
     box-shadow: none !important;
     border: none !important;
+    margin: 0 !important;
   }
 
-  #invoice-print-area table {
-    page-break-inside: avoid !important;
-  }
-
+  /* Hide all edit-only UI chrome in print */
   .no-print { display: none !important; }
+
+  /* Remove dashed/dotted edit borders — show plain text in print */
+  #invoice-print-area input[type="text"],
+  #invoice-print-area input[type="number"],
+  #invoice-print-area input[type="date"] {
+    border: none !important;
+    background: transparent !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    padding: 2px 0 !important;
+    color: #0F172A !important;
+  }
+
+  #invoice-print-area input[type="date"]::-webkit-calendar-picker-indicator {
+    display: none !important;
+  }
+
+  /* Prevent any section from splitting across pages */
+  #invoice-print-area > div {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
+
+/* ── PDF page-break utilities (used by estimate/quotation HTML) ── */
+.pdf-avoid-break {
+  page-break-inside: avoid !important;
+  break-inside: avoid !important;
+}
+
+/* ── Print-only / Screen-only visibility ── */
+.print-only { display: none !important; }
+
+@media print {
+  .screen-only { display: none !important; }
+  .print-only { display: inline !important; }
 }

@@ -1435,6 +1435,7 @@ function PaintShipLogo({ size=72 }) {
     <img
       src="/Paintship B-Logo.png"
       alt="PaintShip"
+      onError={(e) => { if (!e.target.dataset.fallback) { e.target.dataset.fallback = "1"; e.target.src = "/PaintShip B W Logo.png"; } }}
       style={{ height: size, width: "auto", objectFit: "contain", display: "block" }}
     />
   );
@@ -6679,7 +6680,7 @@ function LoginScreen({ onLogin }) {
     <div style={{width:"100%",maxWidth:400}}>
       <div style={{textAlign:"center",marginBottom:32}}>
         <div style={{display:"flex",justifyContent:"center"}}>
-          <img src="/PSQ-Logo.png" alt="PSQ" style={{width:120,maxWidth:"120px",height:"auto",objectFit:"contain",display:"block"}}/>
+          <img src="/PSQ-Logo.png" alt="PSQ" onError={(e) => { if (!e.target.dataset.fallback) { e.target.dataset.fallback = "1"; e.target.src = "/PaintShip B W Logo.png"; } }} style={{width:120,maxWidth:"120px",height:"auto",objectFit:"contain",display:"block"}}/>
         </div>
       </div>
       <div style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,padding:"28px 24px",boxShadow:"0 24px 56px rgba(0,0,0,0.45)"}}>
@@ -7472,8 +7473,36 @@ function generatePDF(project) {
   const extGstAmtPDF=Number(totalsPDF.extChargeCalc?.gstAmt)||0;
   const finalGrandTotalPDF=totalsPDF.finalTotal;
 
-  const savedLogoSrc = (typeof localStorage !== "undefined" && localStorage.getItem("custom_pdf_logo")) || "/PaintShip B W Logo.png";
-  const grandBlock=`<div style="margin-top:28px;background:#17233C;border-radius:12px;padding:18px 20px">${joineryHasData?`<div style="background:rgba(255,255,255,0.06);border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center"><div style="font-size:9px;color:rgba(255,255,255,0.5);font-weight:700;letter-spacing:.06em">WOOD, METAL &amp; JOINERY</div><div style="font-size:14px;font-weight:800;color:#B8893B">${inr(doorWindowCalcPDF.total+polishPDF.total)}</div></div>`:""}${(totalsPDF.exterior.total>0&&!showInt)?`<div style="background:rgba(255,255,255,0.06);border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center"><div style="font-size:9px;color:rgba(255,255,255,0.5);font-weight:700;letter-spacing:.06em">EXTERIOR</div><div style="font-size:14px;font-weight:800;color:#B8893B">${inr(totalsPDF.exterior.total)}</div></div>`:""}${showInt&&exteriorPDF.area>0?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px"><div style="background:rgba(255,255,255,0.08);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:rgba(255,255,255,0.5);font-weight:700;letter-spacing:.06em">INTERIOR</div><div style="font-size:16px;font-weight:900;color:#B8893B;margin-top:3px">${inr(totalsPDF.interior.total)}</div></div><div style="background:rgba(255,255,255,0.08);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:rgba(255,255,255,0.5);font-weight:700;letter-spacing:.06em">EXTERIOR</div><div style="font-size:16px;font-weight:900;color:#B8893B;margin-top:3px">${inr(totalsPDF.exterior.total)}</div></div></div>`:""}<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:12px 14px;margin:10px 0 14px;border:1px solid rgba(255,255,255,0.08)"><div style="font-size:9px;color:rgba(255,255,255,0.45);font-weight:700;letter-spacing:.07em;margin-bottom:8px">CHARGES SUMMARY</div><table style="width:100%;border-collapse:collapse;color:rgba(255,255,255,0.85)"><tbody>
+  // ── Logo resolution: convert public-path logos to data URIs so they embed
+  //    inside the Blob-generated HTML (relative paths won't resolve in a blob: URL).
+  //    Custom uploaded logos are already base64 data URIs in localStorage.
+  const presetLogoMap = { dark: "/PaintShip B W Logo.png", light: "/Paintship W-W-Logo.png", square: "/PSQ-Logo.png" };
+  const presetChoice = (typeof localStorage !== "undefined" && localStorage.getItem("pdf_logo_preset")) || "dark";
+  const savedLogoSrc = (typeof localStorage !== "undefined" && localStorage.getItem("custom_pdf_logo")) || presetLogoMap[presetChoice] || "/PaintShip B W Logo.png";
+  let logoSrc = savedLogoSrc;
+  // If it's a relative path (not a data: URI), fetch and convert to base64 data URI
+  if (logoSrc && !logoSrc.startsWith("data:") && typeof fetch !== "undefined") {
+    try {
+      // Synchronous XHR to get the image as base64 before building the HTML
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", logoSrc, false); // synchronous
+      xhr.overrideMimeType("image/png");
+      xhr.responseType = "arraybuffer";
+      xhr.send();
+      if (xhr.status === 200) {
+        const bytes = new Uint8Array(xhr.response);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        const ext = logoSrc.split(".").pop().toLowerCase();
+        const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
+        logoSrc = `data:${mime};base64,${btoa(binary)}`;
+      }
+    } catch (e) {
+      // Fallback: use the path directly — may not render in blob but won't crash
+      console.warn("Logo data-URI conversion failed, using path:", logoSrc);
+    }
+  }
+  const grandBlock=`<div style="margin-top:28px;background:#17233C;border-radius:12px;padding:18px 20px;page-break-inside:avoid;break-inside:avoid">${joineryHasData?`<div style="background:rgba(255,255,255,0.06);border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center"><div style="font-size:9px;color:rgba(255,255,255,0.5);font-weight:700;letter-spacing:.06em">WOOD, METAL &amp; JOINERY</div><div style="font-size:14px;font-weight:800;color:#B8893B">${inr(doorWindowCalcPDF.total+polishPDF.total)}</div></div>`:""}${(totalsPDF.exterior.total>0&&!showInt)?`<div style="background:rgba(255,255,255,0.06);border-radius:8px;padding:8px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center"><div style="font-size:9px;color:rgba(255,255,255,0.5);font-weight:700;letter-spacing:.06em">EXTERIOR</div><div style="font-size:14px;font-weight:800;color:#B8893B">${inr(totalsPDF.exterior.total)}</div></div>`:""}${showInt&&exteriorPDF.area>0?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px"><div style="background:rgba(255,255,255,0.08);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:rgba(255,255,255,0.5);font-weight:700;letter-spacing:.06em">INTERIOR</div><div style="font-size:16px;font-weight:900;color:#B8893B;margin-top:3px">${inr(totalsPDF.interior.total)}</div></div><div style="background:rgba(255,255,255,0.08);border-radius:8px;padding:10px;text-align:center"><div style="font-size:9px;color:rgba(255,255,255,0.5);font-weight:700;letter-spacing:.06em">EXTERIOR</div><div style="font-size:16px;font-weight:900;color:#B8893B;margin-top:3px">${inr(totalsPDF.exterior.total)}</div></div></div>`:""}<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:12px 14px;margin:10px 0 14px;border:1px solid rgba(255,255,255,0.08)"><div style="font-size:9px;color:rgba(255,255,255,0.45);font-weight:700;letter-spacing:.07em;margin-bottom:8px">CHARGES SUMMARY</div><table style="width:100%;border-collapse:collapse;color:rgba(255,255,255,0.85)"><tbody>
     <tr><td style="padding:3px 0;font-size:11px">Service Subtotal</td><td style="padding:3px 0;font-size:11px;text-align:right">${inr(serviceSubtotalPDF)}</td></tr>
     ${additionalChargesPDF>0?`<tr><td style="padding:3px 0;font-size:11px">Additional Charges</td><td style="padding:3px 0;font-size:11px;text-align:right">${inr(additionalChargesPDF)}</td></tr><tr><td style="padding:3px 0;font-size:11px;font-weight:700">Subtotal After Charges</td><td style="padding:3px 0;font-size:11px;font-weight:700;text-align:right">${inr(subtotalPDF)}</td></tr>`:""}
     ${intDiscountAmtPDF>0?`<tr><td style="padding:3px 0;font-size:11px;color:#F3A6A6">Interior Discount (${intDiscountPctPDF}%)</td><td style="padding:3px 0;font-size:11px;text-align:right;color:#F3A6A6">−${inr(intDiscountAmtPDF)}</td></tr>`:""}
@@ -7485,16 +7514,40 @@ function generatePDF(project) {
     ${gstAmountPDF>0?`<tr style="border-top:1px solid rgba(255,255,255,0.10)"><td style="padding:4px 0;font-size:11px;font-weight:700">Total GST</td><td style="padding:4px 0;font-size:11px;font-weight:700;text-align:right">${inr(gstAmountPDF)}</td></tr>`:""}
   </tbody></table></div><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:10px;color:rgba(255,255,255,0.4);font-weight:700;letter-spacing:.07em">FINAL GRAND TOTAL</div><div style="font-size:11px;color:rgba(255,255,255,0.25);margin-top:2px">${totalsPDF.grandArea.toFixed(1)} sf total</div></div><div style="font-size:30px;font-weight:900;color:#B8893B">${inr(finalGrandTotalPDF)}</div></div></div>`;
 
-  const logoSrc = (typeof localStorage !== "undefined" && localStorage.getItem("custom_pdf_logo")) || "/PaintShip B W Logo.png";
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Quotation — ${esc(customer.name||"Client")}</title>
-<style>*{box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;margin:0;color:#1E293B;background:#F7F6F2}.page{max-width:800px;margin:0 auto;padding:24px}.hdr{background:#17233C;color:#fff;padding:20px 24px;border-radius:10px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-start}.logo{font-size:24px;font-weight:900}.logo span{color:#B8893B}.badge{display:inline-block;padding:3px 12px;border-radius:20px;font-size:10px;font-weight:700;margin-top:6px;margin-right:4px}.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.box{background:#fff;border:1px solid #E2E5E9;border-radius:8px;padding:10px 12px}.box-l{font-size:9px;color:#667085;font-weight:700;text-transform:uppercase;display:block;margin-bottom:2px}.box-v{font-size:13px;font-weight:600}table{width:100%;border-collapse:collapse;page-break-inside:auto}tr{page-break-inside:avoid}thead{display:table-header-group}td{word-break:break-word;overflow-wrap:anywhere}.footer{margin-top:20px;text-align:center;font-size:10px;color:#667085;padding-top:12px;border-top:1px solid #E2E5E9}@media print{.np{display:none!important}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body><div class="page">
-<div class="hdr"><div><img src="${logoSrc}" alt="PaintShip Logo" style="height:84px; width:auto; object-fit:contain;" /><div style="font-size:11px;opacity:.5;margin-top:2px">Professional Painting Quotation</div><div class="badge" style="background:#B8893B;color:#17233C">${projectType==="fresh"?"FRESH PAINTING":"RE-PAINTING"}</div><div class="badge" style="background:rgba(255,255,255,0.15);color:#fff">${withMat?"WITH MATERIAL":"MEASURE ONLY"}</div><div class="badge" style="background:rgba(255,255,255,0.1);color:#fff">${isCombinedPDF?"COMBINED ESTIMATE":isDoorWindowPDF?"DOOR &amp; WINDOW":isWallpaperPDF?"WALLPAPER":isTexturePDF?"TEXTURE":scope==="both"?"INTERIOR + EXTERIOR":scope==="exterior"?"EXTERIOR":"INTERIOR"}</div></div><div style="text-align:right;font-size:11px;opacity:.65"><div><b>Date:</b> ${date}</div><div style="margin-top:3px"><b>Ref:</b>PS-${project.id.slice(0,6).toUpperCase()}</div><div style="margin-top:3px"><b>Prepared By:</b> ${esc(preparedByName)}</div><div style="margin-top:3px"><b>Supervisor ID:</b> ${esc(preparedByIdLabel)}</div></div></div>
-<h2 style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#17233C;border-left:3px solid #B8893B;padding-left:8px;margin:0 0 8px">Client Information</h2>
+<style>
+*{box-sizing:border-box}
+body{font-family:'Segoe UI',Arial,sans-serif;margin:0;color:#1E293B;background:#F7F6F2}
+.page{max-width:800px;margin:0 auto;padding:24px}
+.hdr{background:#17233C;color:#fff;padding:20px 24px;border-radius:0;margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-start;page-break-inside:avoid;break-inside:avoid}
+.logo{font-size:24px;font-weight:900}.logo span{color:#B8893B}
+.badge{display:inline-block;padding:3px 12px;border-radius:20px;font-size:10px;font-weight:700;margin-top:6px;margin-right:4px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;page-break-inside:avoid;break-inside:avoid}
+.box{background:#fff;border:1px solid #E2E5E9;border-radius:8px;padding:10px 12px}
+.box-l{font-size:9px;color:#667085;font-weight:700;text-transform:uppercase;display:block;margin-bottom:2px}
+.box-v{font-size:13px;font-weight:600}
+table{width:100%;border-collapse:collapse;page-break-inside:auto}
+tr{page-break-inside:avoid;break-inside:avoid}
+thead{display:table-header-group}
+td{word-break:break-word;overflow-wrap:anywhere}
+.footer{margin-top:20px;text-align:center;font-size:10px;color:#667085;padding-top:12px;border-top:1px solid #E2E5E9;page-break-inside:avoid;break-inside:avoid}
+@media print{
+  .np{display:none!important}
+  body{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
+  .page{max-width:none;padding:0}
+  .hdr{border-radius:0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  h2{page-break-inside:avoid;break-inside:avoid}
+  .g2{page-break-inside:avoid;break-inside:avoid}
+  .box{page-break-inside:avoid;break-inside:avoid}
+}
+</style></head><body><div class="page">
+<div class="hdr"><div><img src="${logoSrc}" alt="PaintShip Logo" style="height:72px; width:auto; object-fit:contain; max-width:200px;" crossorigin="anonymous" /><div style="font-size:11px;opacity:.5;margin-top:2px">Professional Painting Quotation</div><div class="badge" style="background:#B8893B;color:#17233C">${projectType==="fresh"?"FRESH PAINTING":"RE-PAINTING"}</div><div class="badge" style="background:rgba(255,255,255,0.15);color:#fff">${withMat?"WITH MATERIAL":"MEASURE ONLY"}</div><div class="badge" style="background:rgba(255,255,255,0.1);color:#fff">${isCombinedPDF?"COMBINED ESTIMATE":isDoorWindowPDF?"DOOR &amp; WINDOW":isWallpaperPDF?"WALLPAPER":isTexturePDF?"TEXTURE":scope==="both"?"INTERIOR + EXTERIOR":scope==="exterior"?"EXTERIOR":"INTERIOR"}</div></div><div style="text-align:right;font-size:11px;opacity:.65"><div><b>Date:</b> ${date}</div><div style="margin-top:3px"><b>Ref:</b>PS-${project.id.slice(0,6).toUpperCase()}</div><div style="margin-top:3px"><b>Prepared By:</b> ${esc(preparedByName)}</div><div style="margin-top:3px"><b>Supervisor ID:</b> ${esc(preparedByIdLabel)}</div></div></div>
+<h2 style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#17233C;border-left:3px solid #B8893B;padding-left:8px;margin:0 0 8px;page-break-inside:avoid;break-inside:avoid">Client Information</h2>
 <div class="g2"><div class="box"><span class="box-l">Name</span><div class="box-v">${esc(customer.name)||"—"}</div></div><div class="box"><span class="box-l">Mobile</span><div class="box-v">${esc(customer.mobile)||"—"}</div></div><div class="box"><span class="box-l">Email</span><div class="box-v">${esc(customer.email)||"—"}</div></div><div class="box"><span class="box-l">PIN</span><div class="box-v">${esc(customer.pincode)||"—"}</div></div><div class="box"><span class="box-l">Location</span><div class="box-v">${esc(customer.location)||"—"}</div></div></div>
-<div class="g2" style="margin-bottom:14px"><div class="box" style="grid-column:span 2"><span class="box-l">Address</span><div class="box-v">${esc(customer.address)||"—"}</div></div></div>
-<div class="g2" style="margin-bottom:14px"><div class="box"><span class="box-l">Project Category</span><div class="box-v">${esc(catLabel)}</div></div><div class="box"><span class="box-l">Measurement Type</span><div class="box-v">${isCombinedPDF?"Combined Estimate":isDoorWindowPDF?"Door & Window":isWallpaperPDF?"Wallpaper":isTexturePDF?"Texture":scope==="both"?"Interior + Exterior":scope==="exterior"?"Exterior Only":"Interior Only"}</div></div></div>
+<div class="g2" style="margin-bottom:14px;page-break-inside:avoid;break-inside:avoid"><div class="box" style="grid-column:span 2"><span class="box-l">Address</span><div class="box-v">${esc(customer.address)||"—"}</div></div></div>
+<div class="g2" style="margin-bottom:14px;page-break-inside:avoid;break-inside:avoid"><div class="box"><span class="box-l">Project Category</span><div class="box-v">${esc(catLabel)}</div></div><div class="box"><span class="box-l">Measurement Type</span><div class="box-v">${isCombinedPDF?"Combined Estimate":isDoorWindowPDF?"Door & Window":isWallpaperPDF?"Wallpaper":isTexturePDF?"Texture":scope==="both"?"Interior + Exterior":scope==="exterior"?"Exterior Only":"Interior Only"}</div></div></div>
 ${intSummary}${extSummary}${joinerySectionPDF}${wallpaperSectionPDF}${tx2SectionPDF}${grandBlock}
-${project.notes?`<h2 style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#17233C;border-left:3px solid #B8893B;padding-left:8px;margin:20px 0 8px">Notes</h2><div class="box"><div class="box-v">${esc(project.notes)}</div></div>`:""}
+${project.notes?`<h2 style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#17233C;border-left:3px solid #B8893B;padding-left:8px;margin:20px 0 8px;page-break-inside:avoid;break-inside:avoid">Notes</h2><div class="box" style="page-break-inside:avoid;break-inside:avoid"><div class="box-v">${esc(project.notes)}</div></div>`:""}
 <div class="footer">PaintShip Professional · ${new Date().toLocaleString()}</div>
 <div class="np" style="text-align:center;margin-top:16px"><button onclick="window.print()" style="background:#B8893B;color:#17233C;border:none;padding:12px 28px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">Print / Save as PDF</button></div>
 </div></body></html>`;
@@ -9044,25 +9097,51 @@ loadAllProjects().then(projects => {
               ))}
             </div>
 
-{/* PDF Logo — dynamic uploader with localStorage persistence */}
+{/* PDF Logo — preset selector + custom uploader with localStorage persistence */}
             <div style={{...CARD,marginBottom:12}}>
-              <div style={{fontSize:12,fontWeight:800,color:C.navy,marginBottom:8}}>PDF Logo</div>
-              <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                <div style={{width:140,height:84,borderRadius:6,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",background:"transparent",overflow:"hidden"}}>
-                  {customPdfLogo ? (
-                    <img src={customPdfLogo} alt="Custom Logo" style={{height:"84px",width:"auto",objectFit:"contain"}} />
-                  ) : (
-                    <img src="/Paintship W-W-Logo (5).png" alt="PaintShip" style={{height:"84px",width:"auto",objectFit:"contain"}} />
-                  )}
-                </div>
-                <div>
-                  <input type="file" accept="image/*" id="logo-upload-input" style={{display:'none'}} onChange={handleLogoUpload} />
-                  <button onClick={() => document.getElementById('logo-upload-input')?.click()} style={{background:C.blueL,color:C.blue,borderRadius:20,padding:"6px 12px",fontSize:11,fontWeight:700,border:`1px solid ${C.blue}33`,cursor:"pointer"}}>
-                    📷 Upload / Change Logo
-                  </button>
-                </div>
-                <div style={{fontSize:11,color:"#888",marginTop:4}}>
-                  {customPdfLogo ? "Custom logo active" : "Official PaintShip logo — used on every quotation."}
+              <div style={{fontSize:12,fontWeight:800,color:C.navy,marginBottom:10}}>PDF Logo</div>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-start",marginBottom:10}}>
+                {/* Preset A: Dark logo for white headers */}
+                <button onClick={() => { localStorage.removeItem("custom_pdf_logo"); setCustomPdfLogo(null); localStorage.setItem("pdf_logo_preset", "dark"); }}
+                  style={{flex:"1 1 120px",maxWidth:150,border:`2px solid ${!customPdfLogo && (localStorage.getItem("pdf_logo_preset")||"dark")==="dark"?C.navy:C.border}`,borderRadius:10,padding:10,background:!customPdfLogo && (localStorage.getItem("pdf_logo_preset")||"dark")==="dark"?C.blueL:"#fff",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+                  <div style={{height:48,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"#fff",borderRadius:6,border:"1px solid #E2E8F0"}}>
+                    <img src="/PaintShip B W Logo.png" alt="Dark" style={{height:36,width:"auto",objectFit:"contain"}} />
+                  </div>
+                  <div style={{fontSize:9,fontWeight:700,color:C.navy,textAlign:"center"}}>Option A: Dark Logo</div>
+                  <div style={{fontSize:8,color:"#888"}}>For white headers</div>
+                </button>
+                {/* Preset B: Light/white logo for dark headers */}
+                <button onClick={() => { localStorage.removeItem("custom_pdf_logo"); setCustomPdfLogo(null); localStorage.setItem("pdf_logo_preset", "light"); }}
+                  style={{flex:"1 1 120px",maxWidth:150,border:`2px solid ${!customPdfLogo && localStorage.getItem("pdf_logo_preset")==="light"?C.navy:C.border}`,borderRadius:10,padding:10,background:!customPdfLogo && localStorage.getItem("pdf_logo_preset")==="light"?C.blueL:"#fff",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+                  <div style={{height:48,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",background:"#17233C",borderRadius:6}}>
+                    <img src="/Paintship W-W-Logo.png" alt="Light" onError={(e)=>{e.target.src="/Paintship W-Logo.png";}} style={{height:36,width:"auto",objectFit:"contain"}} />
+                  </div>
+                  <div style={{fontSize:9,fontWeight:700,color:C.navy,textAlign:"center"}}>Option B: Light Logo</div>
+                  <div style={{fontSize:8,color:"#888"}}>For dark headers</div>
+                </button>
+                {/* Preset C: Vertical/Square compact logo */}
+                <button onClick={() => { localStorage.removeItem("custom_pdf_logo"); setCustomPdfLogo(null); localStorage.setItem("pdf_logo_preset", "square"); }}
+                  style={{flex:"1 1 120px",maxWidth:150,border:`2px solid ${!customPdfLogo && localStorage.getItem("pdf_logo_preset")==="square"?C.navy:C.border}`,borderRadius:10,padding:10,background:!customPdfLogo && localStorage.getItem("pdf_logo_preset")==="square"?C.blueL:"#fff",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+                  <div style={{height:48,width:48,display:"flex",alignItems:"center",justifyContent:"center",background:"#fff",borderRadius:6,border:"1px solid #E2E8F0"}}>
+                    <img src="/PSQ-Logo.png" alt="Square" style={{height:40,width:40,objectFit:"contain"}} />
+                  </div>
+                  <div style={{fontSize:9,fontWeight:700,color:C.navy,textAlign:"center"}}>Option C: Compact</div>
+                  <div style={{fontSize:8,color:"#888"}}>Vertical / square</div>
+                </button>
+              </div>
+              {/* Custom upload + status */}
+              <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",borderTop:`1px solid ${C.border}`,paddingTop:10}}>
+                {customPdfLogo && (
+                  <div style={{height:48,width:100,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6,border:"1px solid #E2E8F0",background:"#fff",overflow:"hidden"}}>
+                    <img src={customPdfLogo} alt="Custom" style={{height:40,width:"auto",objectFit:"contain"}} />
+                  </div>
+                )}
+                <input type="file" accept="image/*" id="logo-upload-input" style={{display:'none'}} onChange={handleLogoUpload} />
+                <button onClick={() => document.getElementById('logo-upload-input')?.click()} style={{background:C.blueL,color:C.blue,borderRadius:20,padding:"7px 14px",fontSize:11,fontWeight:700,border:`1px solid ${C.blue}33`,cursor:"pointer"}}>
+                  📷 Upload / Change Custom Logo
+                </button>
+                <div style={{fontSize:11,color:"#888"}}>
+                  {customPdfLogo ? "Custom logo active — overrides preset" : "Preset logo selected — used on every quotation."}
                 </div>
               </div>
             </div>

@@ -17,10 +17,11 @@ export default function Header({ onNewProject, onLogout, onMasterRates }) {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <img
-          src="/Paintship W-W-Logo (5).png"
+          src="/Paintship W-W-Logo.png"
           alt="PaintShip"
+          onError={(e) => { if (!e.target.dataset.fallback) { e.target.dataset.fallback = "1"; e.target.src = "/Paintship W-Logo.png"; } }}
           className="h-11 w-auto object-contain block"
-          style={{ height: "84px", width: "auto" }}
+          style={{ height: "84px", width: "auto", objectFit: "contain" }}
         />
       </div>
       <div style={{ display: "flex", gap: 7, alignItems: "center" }}>

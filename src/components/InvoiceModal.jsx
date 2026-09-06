@@ -286,6 +286,23 @@ export default function InvoiceModal({ project, totals, onClose }) {
 
   const upiString = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=Paintship`;
 
+  // Print-friendly field: shows a plain text span in print, editable input on screen
+  const PrintField = ({ type="text", value, onChange, placeholder, maxWidth, textAlign, fieldStyle }) => (
+    <>
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        className="screen-only"
+        style={{ ...editableFieldStyle, maxWidth, textAlign: textAlign || "right", ...fieldStyle }}
+      />
+      <span className="print-only" style={{ fontSize: 11, fontWeight: 600, color: "#0F172A", textAlign: textAlign || "right" }}>
+        {type === "date" ? (value ? new Date(value).toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" }) : placeholder || "—") : (value || placeholder || "—")}
+      </span>
+    </>
+  );
+
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", overflowY:"auto", padding:"16px 12px" }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background:C.white, borderRadius:14, maxWidth:960, width:"100%", margin:"auto", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
@@ -317,8 +334,8 @@ export default function InvoiceModal({ project, totals, onClose }) {
             {/* Left: Company Logo (square) + Name/Address below */}
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "8px" }}>
-                <div style={{ width: 80, height: 80, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #E2E8F0", borderRadius: 8, background: "#fff", padding: 4, flexShrink: 0 }}>
-                  <img src={companyLogo} alt="PaintShip" crossOrigin="anonymous" onError={(e) => { e.target.src = '/PaintShip B Logo.png'; }} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                <div style={{ width: 120, height: 120, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #E2E8F0", borderRadius: 8, background: "#fff", padding: 6, flexShrink: 0 }}>
+                  <img src={companyLogo} alt="PaintShip" crossOrigin="anonymous" onError={(e) => { if (!e.target.dataset.fb) { e.target.dataset.fb = "1"; e.target.src = '/PaintShip B Logo.png'; } }} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                 </div>
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   <div style={{ fontSize: 20, fontWeight: 700, color: "#0F1E3C", lineHeight: 1.2 }}>{companyName}</div>
@@ -337,38 +354,41 @@ export default function InvoiceModal({ project, totals, onClose }) {
             {/* Middle: Vertical Divider */}
             <div style={{ borderRight: "1px solid #D1D5DB", margin: "0 16px", height: "100%" }} />
 
-            {/* Right: Invoice Metadata — editable fields */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "flex-end" }}>
+            {/* Right: Invoice Metadata — structured 2-column grid (label/value) */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", alignItems: "flex-end" }}>
               <div style={{ background: "#EFF6FF", color: "#1E40AF", padding: "4px 12px", borderRadius: "16px", fontSize: 11, fontWeight: 600, display: "inline-block" }}>{currentStage.shortLabel}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px", width: "100%", maxWidth: "280px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>Invoice No</span>
-                  <input type="text" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder={data.invoiceNo} style={{ ...editableFieldStyle, maxWidth: 160, textAlign: "right" }} />
+              <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", width: "100%", maxWidth: "280px", alignItems: "center" }}>
+                <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "left" }}>Invoice No</span>
+                <div style={{ textAlign: "right" }}>
+                  <PrintField type="text" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder={data.invoiceNo} maxWidth={160} />
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>Invoice Date</span>
-                  <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} style={{ ...editableFieldStyle, maxWidth: 160 }} />
+                <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "left" }}>Invoice Date</span>
+                <div style={{ textAlign: "right" }}>
+                  <PrintField type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} maxWidth={160} />
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>Due Date</span>
-                  <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} style={{ ...editableFieldStyle, maxWidth: 160 }} />
+                <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "left" }}>Due Date</span>
+                <div style={{ textAlign: "right" }}>
+                  <PrintField type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} maxWidth={160} />
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>Place</span>
-                  <input type="text" value={placeOfSupply} onChange={e => setPlaceOfSupply(e.target.value)} placeholder="Location" style={{ ...editableFieldStyle, maxWidth: 160, textAlign: "right" }} />
+                <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "left" }}>Place</span>
+                <div style={{ textAlign: "right" }}>
+                  <PrintField type="text" value={placeOfSupply} onChange={e => setPlaceOfSupply(e.target.value)} placeholder="Location" maxWidth={160} />
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>Tax</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <button onClick={() => setTaxEnabled(!taxEnabled)} style={{ border: `1px solid ${taxEnabled ? "#0F1E3C" : "#CBD5E1"}`, borderRadius: 4, padding: "2px 6px", fontSize: 9, fontWeight: 700, cursor: "pointer", background: taxEnabled ? "#0F1E3C" : "#F1F5F9", color: taxEnabled ? "#fff" : "#64748B" }}>{taxEnabled ? "GST ON" : "GST OFF"}</button>
-                    {taxEnabled && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: "#0F172A" }}>{data.effectiveGst} @</span>
-                        <input type="number" min="0" max="100" value={taxPct} onChange={e => setTaxPct(parseFloat(e.target.value) || 0)} style={{ ...editableFieldStyle, width: 48, textAlign: "center" }} />
-                        <span style={{ fontSize: 11, fontWeight: 600, color: "#0F172A" }}>%</span>
-                      </div>
-                    )}
-                  </div>
+                <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em", textAlign: "left" }}>Tax</span>
+                <div style={{ textAlign: "right" }}>
+                  <button onClick={() => setTaxEnabled(!taxEnabled)} className="no-print" style={{ border: `1px solid ${taxEnabled ? "#0F1E3C" : "#CBD5E1"}`, borderRadius: 4, padding: "2px 6px", fontSize: 9, fontWeight: 700, cursor: "pointer", background: taxEnabled ? "#0F1E3C" : "#F1F5F9", color: taxEnabled ? "#fff" : "#64748B" }}>{taxEnabled ? "GST ON" : "GST OFF"}</button>
+                  {taxEnabled ? (
+                    <span className="print-only" style={{ fontSize: 11, fontWeight: 600, color: "#0F172A" }}>{data.effectiveGst} @ {taxPct}%</span>
+                  ) : (
+                    <span className="print-only" style={{ fontSize: 10, fontWeight: 600, color: "#64748B", fontStyle: "italic" }}>Tax Exempt / Non-GST</span>
+                  )}
+                  {taxEnabled && (
+                    <span className="no-print" style={{ display: "inline-flex", alignItems: "center", gap: 2, marginLeft: 4 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: "#0F172A" }}>{data.effectiveGst} @</span>
+                      <input type="number" min="0" max="100" value={taxPct} onChange={e => setTaxPct(parseFloat(e.target.value) || 0)} style={{ ...editableFieldStyle, width: 48, textAlign: "center" }} />
+                      <span style={{ fontSize: 11, fontWeight: 600, color: "#0F172A" }}>%</span>
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
