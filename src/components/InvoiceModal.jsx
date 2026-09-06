@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { C } from "./shared.jsx";
 
 const GST_RATE = 18;
@@ -22,7 +23,6 @@ function numberToWords(n) {
   return recurse(num) + " Rupees Only";
 }
 
-// Tata-style Corporate 3-Stage Invoice System
 const DEFAULT_STAGES = [
   { id: "stage1", pct: 20, label: "Stage 1: Advance / Booking Invoice (20%)", shortLabel: "Stage 1: Advance", desc: "Booking & Material", invoiceTitle: "STAGE 1: ADVANCE INVOICE", type: "advance" },
   { id: "stage2", pct: 50, label: "Stage 2: Running / Mid-Project Invoice (50%)", shortLabel: "Stage 2: Running", desc: "Surface Prep & Primer Complete", invoiceTitle: "STAGE 2: PROGRESS INVOICE", type: "running" },
@@ -31,8 +31,27 @@ const DEFAULT_STAGES = [
 
 const PAYMENT_STATUS_OPTIONS = ["UNPAID", "PARTIALLY PAID", "PAID"];
 
+const inputBaseStyle = {
+  border: "1px solid #CBD5E1",
+  borderRadius: 4,
+  padding: "3px 6px",
+  fontSize: 11,
+  outline: "none",
+  background: "#fff",
+  color: "#0F172A",
+  fontWeight: 600,
+  boxSizing: "border-box",
+  width: "100%",
+};
+
+const editableFieldStyle = {
+  ...inputBaseStyle,
+  border: "1px dashed #94A3B8",
+  background: "#F8FAFC",
+  cursor: "text",
+};
+
 export default function InvoiceModal({ project, totals, onClose }) {
-  // Stage & Payment state
   const [selectedStageIdx, setSelectedStageIdx] = useState(0);
   const [paymentStatus, setPaymentStatus] = useState("UNPAID");
   const [previouslyReceived, setPreviouslyReceived] = useState(0);
@@ -40,7 +59,6 @@ export default function InvoiceModal({ project, totals, onClose }) {
   const [customPercentage, setCustomPercentage] = useState(0);
   const [customAmount, setCustomAmount] = useState(0);
 
-  // New Team Controls
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [dueDate, setDueDate] = useState(() => {
@@ -61,52 +79,30 @@ export default function InvoiceModal({ project, totals, onClose }) {
   const [authorizedSignatory, setAuthorizedSignatory] = useState("");
   const [digitalStamp, setDigitalStamp] = useState(false);
 
-  const data = useMemo(() => {
+  // Dynamic line items
+  const [lineItems, setLineItems] = useState([]);
+  const [useManualItems, setUseManualItems] = useState(false);
+
+  // Dynamic discounts / charges
+  const [reductions, setReductions] = useState([]);
+  const [extraCharges, setExtraCharges] = useState([]);
+
+  // Tax/GST editable fields
+  const [taxPct, setTaxPct] = useState(GST_RATE);
+  const [taxEnabled, setTaxEnabled] = useState(true);
+
+  // UPI QR toggle
+  const [showQrCode, setShowQrCode] = useState(true);
+
+  // ---- Derived data from project totals (auto mode) ----
+  const autoData = useMemo(() => {
     const grandTotal = Number(totals?.grandTotal) || 0;
     const grandArea = Number(totals?.grandArea) || 0;
     const subtotal = Number(totals?.combinedSubtotal) || 0;
     const additionalCharges = Number(totals?.additionalCharges) || 0;
     const discountAmount = Number(totals?.discountAmount) || 0;
-    const taxableAmount = Number(totals?.taxableAmount) || 0;
     const gstAmount = Number(totals?.gstAmount) || 0;
     const gstPct = Number(totals?.gstPct) || GST_RATE;
-    const hasGst = gstAmount > 0;
-
-    const companyState = "Maharashtra";
-    const isIGST = placeOfSupply && placeOfSupply.trim().toLowerCase() !== companyState.toLowerCase();
-    const effectiveGst = isIGST ? "IGST" : "GST";
-
-    const matTotal = (totals?.interior ? 0 : 0) + (Number(totals?.exterior?.material) || 0);
-    const labTotal = Number(totals?.exterior?.labour) || 0;
-
-    const baseInvoiceNo = invoiceNumber || `INV-${String(project?.id || "").slice(-6).toUpperCase()}`;
-    const stageSuffix = isCustomStage ? `-CUSTOM` : `-S${selectedStageIdx + 1}`;
-    const finalInvoiceNo = baseInvoiceNo.endsWith(stageSuffix) ? baseInvoiceNo : `${baseInvoiceNo}${stageSuffix}`;
-
-    const invoiceDateObj = new Date(invoiceDate);
-    const formattedDate = invoiceDateObj.toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" });
-    const dueDateObj = new Date(dueDate);
-    const formattedDueDate = dueDateObj.toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" });
-
-    let stages = DEFAULT_STAGES.map((s) => ({ ...s, amount: (grandTotal * s.pct) / 100 }));
-
-    if (isCustomStage) {
-      const customPct = customPercentage > 0 ? customPercentage : 0;
-      const customAmt = customAmount > 0 ? customAmount : 0;
-      const actualAmount = customAmt > 0 ? customAmt : (grandTotal * customPct) / 100;
-      stages.push({
-        id: "custom", pct: customPct,
-        label: customAmt > 0 ? `Custom Amount: ₹${fmt(customAmt)}` : `Custom Percentage: ${customPct}%`,
-        shortLabel: customAmt > 0 ? "Custom Amount" : "Custom Percentage",
-        desc: "Custom stage as specified", invoiceTitle: "CUSTOM STAGE INVOICE", type: "custom", amount: actualAmount,
-      });
-    }
-
-    const stagesBeforeCurrent = isCustomStage ? [] : stages.slice(0, selectedStageIdx).map(s => s.amount);
-    const cumulativePaidFromStages = stagesBeforeCurrent.reduce((a, b) => a + b, 0);
-    const totalPreviouslyReceived = (Number(previouslyReceived) || 0) + cumulativePaidFromStages;
-    const currentStageAmount = isCustomStage ? stages[stages.length - 1].amount : (stages[selectedStageIdx]?.amount || 0);
-    const remainingBalance = grandTotal - totalPreviouslyReceived - currentStageAmount;
 
     const sections = [
       { label: "Interior", area: totals?.interior?.area || 0, total: totals?.interior?.total || 0, material: 0, labour: 0 },
@@ -119,33 +115,129 @@ export default function InvoiceModal({ project, totals, onClose }) {
 
     const itemRows = [];
     let srCounter = 0;
-    sections.forEach((section, secIdx) => {
+    sections.forEach((section) => {
       const sectionTotal = section.total || 0;
       const sectionArea = section.area || 0;
       if (section.material && section.labour) {
         srCounter++;
-        itemRows.push({ sr: srCounter, item: `${section.label} - Material`, area: sectionArea, rate: sectionArea > 0 ? (section.material / sectionArea) : 0, taxableValue: section.material, taxAmount: (section.material * (gstPct / 100)) / 2, totalAmount: section.material, section: section.label });
+        itemRows.push({ sr: srCounter, item: `${section.label} - Material`, area: sectionArea, rate: sectionArea > 0 ? (section.material / sectionArea) : 0, taxableValue: section.material });
         srCounter++;
-        itemRows.push({ sr: srCounter, item: `${section.label} - Labour`, area: sectionArea, rate: sectionArea > 0 ? (section.labour / sectionArea) : 0, taxableValue: section.labour, taxAmount: (section.labour * (gstPct / 100)) / 2, totalAmount: section.labour, section: section.label });
+        itemRows.push({ sr: srCounter, item: `${section.label} - Labour`, area: sectionArea, rate: sectionArea > 0 ? (section.labour / sectionArea) : 0, taxableValue: section.labour });
       } else {
         srCounter++;
-        itemRows.push({ sr: srCounter, item: section.label, area: sectionArea, rate: sectionTotal > 0 && sectionArea > 0 ? (sectionTotal / sectionArea) : 0, taxableValue: sectionTotal, taxAmount: (sectionTotal * (gstPct / 100)), totalAmount: sectionTotal, section: section.label });
+        itemRows.push({ sr: srCounter, item: section.label, area: sectionArea, rate: sectionTotal > 0 && sectionArea > 0 ? (sectionTotal / sectionArea) : 0, taxableValue: sectionTotal });
       }
     });
 
-    const totalTaxableValue = itemRows.reduce((s, r) => s + (Number(r.taxableValue) || 0), 0);
-    const totalTaxAmount = itemRows.reduce((s, r) => s + (Number(r.taxAmount) || 0), 0);
-    const totalItemAmount = itemRows.reduce((s, r) => s + (Number(r.totalAmount) || 0), 0);
+    return { grandTotal, grandArea, subtotal, additionalCharges, discountAmount, gstAmount, gstPct, sections, itemRows };
+  }, [totals]);
+
+  // ---- Active item rows (manual or auto) ----
+  const activeItems = useManualItems ? lineItems : autoData.itemRows.map((r, i) => ({ ...r, sr: i + 1 }));
+
+  const addLineItem = useCallback(() => {
+    setLineItems(prev => [...prev, { id: Date.now() + Math.random(), description: "", area: 0, rate: 0, qty: 1 }]);
+  }, []);
+
+  const removeLineItem = useCallback((id) => {
+    setLineItems(prev => prev.filter(r => r.id !== id));
+  }, []);
+
+  const updateLineItem = useCallback((id, field, value) => {
+    setLineItems(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+  }, []);
+
+  // ---- Reductions (discounts) ----
+  const addReduction = useCallback(() => {
+    setReductions(prev => [...prev, { id: Date.now() + Math.random(), label: "", amount: 0 }]);
+  }, []);
+
+  const removeReduction = useCallback((id) => {
+    setReductions(prev => prev.filter(r => r.id !== id));
+  }, []);
+
+  const updateReduction = useCallback((id, field, value) => {
+    setReductions(prev => prev.map(r => r.id === id ? { ...r, [field]: field === "amount" ? (parseFloat(value) || 0) : value } : r));
+  }, []);
+
+  // ---- Extra charges ----
+  const addExtraCharge = useCallback(() => {
+    setExtraCharges(prev => [...prev, { id: Date.now() + Math.random(), label: "", amount: 0 }]);
+  }, []);
+
+  const removeExtraCharge = useCallback((id) => {
+    setExtraCharges(prev => prev.filter(r => r.id !== id));
+  }, []);
+
+  const updateExtraCharge = useCallback((id, field, value) => {
+    setExtraCharges(prev => prev.map(r => r.id === id ? { ...r, [field]: field === "amount" ? (parseFloat(value) || 0) : value } : r));
+  }, []);
+
+  // ---- Calculations ----
+  const calc = useMemo(() => {
+    const itemsSubtotal = activeItems.reduce((s, r) => {
+      if (useManualItems) {
+        const qty = Number(r.qty) || 1;
+        const rate = Number(r.rate) || 0;
+        return s + qty * rate;
+      }
+      return s + (Number(r.taxableValue) || 0);
+    }, 0);
+
+    const totalReductions = reductions.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const totalExtraCharges = extraCharges.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+    const afterReductions = Math.max(0, itemsSubtotal - totalReductions);
+    const afterCharges = afterReductions + totalExtraCharges;
+
+    const gstBase = taxEnabled ? (afterCharges * (Number(taxPct) || 0) / 100) : 0;
+    const grandTotal = afterCharges + gstBase;
+
+    return { itemsSubtotal, totalReductions, totalExtraCharges, afterReductions, afterCharges, gstBase, grandTotal };
+  }, [activeItems, reductions, extraCharges, taxEnabled, taxPct, useManualItems]);
+
+  const data = useMemo(() => {
+    const companyState = "Maharashtra";
+    const isIGST = placeOfSupply && placeOfSupply.trim().toLowerCase() !== companyState.toLowerCase();
+    const effectiveGst = isIGST ? "IGST" : "GST";
+
+    const baseInvoiceNo = invoiceNumber || `INV-${String(project?.id || "").slice(-6).toUpperCase()}`;
+    const stageSuffix = isCustomStage ? `-CUSTOM` : `-S${selectedStageIdx + 1}`;
+    const finalInvoiceNo = baseInvoiceNo.endsWith(stageSuffix) ? baseInvoiceNo : `${baseInvoiceNo}${stageSuffix}`;
+
+    const invoiceDateObj = new Date(invoiceDate);
+    const formattedDate = invoiceDateObj.toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" });
+    const dueDateObj = new Date(dueDate);
+    const formattedDueDate = dueDateObj.toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" });
+
+    let stages = DEFAULT_STAGES.map((s) => ({ ...s, amount: (calc.grandTotal * s.pct) / 100 }));
+
+    if (isCustomStage) {
+      const customPct = customPercentage > 0 ? customPercentage : 0;
+      const customAmt = customAmount > 0 ? customAmount : 0;
+      const actualAmount = customAmt > 0 ? customAmt : (calc.grandTotal * customPct) / 100;
+      stages.push({
+        id: "custom", pct: customPct,
+        label: customAmt > 0 ? `Custom Amount: ₹${fmt(customAmt)}` : `Custom Percentage: ${customPct}%`,
+        shortLabel: customAmt > 0 ? "Custom Amount" : "Custom Percentage",
+        desc: "Custom stage as specified", invoiceTitle: "CUSTOM STAGE INVOICE", type: "custom", amount: actualAmount,
+      });
+    }
+
+    const stagesBeforeCurrent = isCustomStage ? [] : stages.slice(0, selectedStageIdx).map(s => s.amount);
+    const cumulativePaidFromStages = stagesBeforeCurrent.reduce((a, b) => a + b, 0);
+    const totalPreviouslyReceived = (Number(previouslyReceived) || 0) + cumulativePaidFromStages;
+    const currentStageAmount = isCustomStage ? stages[stages.length - 1].amount : (stages[selectedStageIdx]?.amount || 0);
+    const remainingBalance = calc.grandTotal - totalPreviouslyReceived - currentStageAmount;
 
     return {
-      grandTotal, grandArea, subtotal, additionalCharges, discountAmount,
-      taxableAmount, gstAmount, gstPct, hasGst, isIGST, effectiveGst,
-      matTotal, labTotal,
+      grandTotal: calc.grandTotal, grandArea: autoData.grandArea,
       invoiceNo: finalInvoiceNo, date: formattedDate, dueDate: formattedDueDate,
-      placeOfSupply, stages, sections, itemRows, totalPreviouslyReceived, currentStageAmount,
-      remainingBalance, cumulativePaidFromStages, totalTaxableValue, totalTaxAmount, totalItemAmount,
+      placeOfSupply, stages, totalPreviouslyReceived, currentStageAmount,
+      remainingBalance, cumulativePaidFromStages,
+      isIGST, effectiveGst,
     };
-  }, [project, totals, selectedStageIdx, isCustomStage, customPercentage, customAmount, invoiceNumber, invoiceDate, dueDate, placeOfSupply, previouslyReceived]);
+  }, [project, calc, autoData.grandArea, selectedStageIdx, isCustomStage, customPercentage, customAmount, invoiceNumber, invoiceDate, dueDate, placeOfSupply, previouslyReceived]);
 
   const currentStage = data.stages.find((_, idx) =>
     isCustomStage ? idx === data.stages.length - 1 : idx === selectedStageIdx
@@ -179,8 +271,7 @@ export default function InvoiceModal({ project, totals, onClose }) {
   }, []);
 
   const handlePreviouslyReceived = useCallback((val) => {
-    const v = parseFloat(val) || 0;
-    setPreviouslyReceived(v);
+    setPreviouslyReceived(parseFloat(val) || 0);
   }, []);
 
   const handlePaymentStatusSet = useCallback(() => {
@@ -192,6 +283,8 @@ export default function InvoiceModal({ project, totals, onClose }) {
 
   const companyLogo = "/PaintShip B W Logo.png";
   const companyAddr = companyAddress || "123 Corporate Plaza, MG Road, Mumbai - 400001, Maharashtra";
+
+  const upiString = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=Paintship`;
 
   return (
     <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center", overflowY:"auto", padding:"16px 12px" }} onClick={onClose}>
@@ -219,17 +312,22 @@ export default function InvoiceModal({ project, totals, onClose }) {
           lineHeight: 1.35,
         }}>
 
-          {/* === A. TOP HEADER: Logo+Address (Left) | Divider | Invoice Metadata (Right) === */}
+          {/* === A. TOP HEADER: Logo (square) + Company name below | Divider | Invoice Metadata (Right) === */}
           <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1px 1fr", gap: "16px", paddingBottom: "14px", marginBottom: "14px", borderBottom: "1px solid #E2E8F0" }}>
-            {/* Left: Company Logo + Address */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                <img src={companyLogo} alt="PaintShip" crossOrigin="anonymous" className="h-12 w-auto object-contain" onError={(e) => { e.target.src = '/PaintShip B Logo.png'; }} style={{ width: 170, height: "auto", objectFit: "contain", flexShrink: 0 }} />
-                <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            {/* Left: Company Logo (square) + Name/Address below */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "8px" }}>
+                <div style={{ width: 80, height: 80, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #E2E8F0", borderRadius: 8, background: "#fff", padding: 4, flexShrink: 0 }}>
+                  <img src={companyLogo} alt="PaintShip" crossOrigin="anonymous" onError={(e) => { e.target.src = '/PaintShip B Logo.png'; }} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
                   <div style={{ fontSize: 20, fontWeight: 700, color: "#0F1E3C", lineHeight: 1.2 }}>{companyName}</div>
                   <div style={{ fontSize: 10, color: "#64748B", fontWeight: 500, letterSpacing: "0.02em", lineHeight: 1.4, textTransform: "uppercase" }}>Head Office / Operations</div>
                 </div>
               </div>
+              {/* Horizontal divider */}
+              <hr style={{ border: "none", borderTop: "1px solid #D1D5DB", margin: "4px 0", width: "100%" }} />
+              {/* Head office address block */}
               <div style={{ fontSize: 11, color: "#475569", lineHeight: 1.5 }}>
                 <div>{companyAddr}</div>
                 <div style={{ marginTop: "4px", fontSize: 10, color: "#64748B" }}>GSTIN: {companyGSTIN} | PAN: {companyPAN}</div>
@@ -239,30 +337,38 @@ export default function InvoiceModal({ project, totals, onClose }) {
             {/* Middle: Vertical Divider */}
             <div style={{ borderRight: "1px solid #D1D5DB", margin: "0 16px", height: "100%" }} />
 
-            {/* Right: Invoice Metadata */}
+            {/* Right: Invoice Metadata — editable fields */}
             <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "flex-end" }}>
-              {/* Stage Pill Badge */}
               <div style={{ background: "#EFF6FF", color: "#1E40AF", padding: "4px 12px", borderRadius: "16px", fontSize: 11, fontWeight: 600, display: "inline-block" }}>{currentStage.shortLabel}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", maxWidth: "280px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", width: "100%", maxWidth: "280px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>Invoice No</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{data.invoiceNo}</span>
+                  <input type="text" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder={data.invoiceNo} style={{ ...editableFieldStyle, maxWidth: 160, textAlign: "right" }} />
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>Invoice Date</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{data.date}</span>
+                  <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} style={{ ...editableFieldStyle, maxWidth: 160 }} />
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>Due Date</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{data.dueDate}</span>
+                  <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} style={{ ...editableFieldStyle, maxWidth: 160 }} />
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>Place</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{data.placeOfSupply || "—"}</span>
+                  <input type="text" value={placeOfSupply} onChange={e => setPlaceOfSupply(e.target.value)} placeholder="Location" style={{ ...editableFieldStyle, maxWidth: 160, textAlign: "right" }} />
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 10, color: "#64748B", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>Tax</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>{data.effectiveGst} @{data.gstPct}%</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <button onClick={() => setTaxEnabled(!taxEnabled)} style={{ border: `1px solid ${taxEnabled ? "#0F1E3C" : "#CBD5E1"}`, borderRadius: 4, padding: "2px 6px", fontSize: 9, fontWeight: 700, cursor: "pointer", background: taxEnabled ? "#0F1E3C" : "#F1F5F9", color: taxEnabled ? "#fff" : "#64748B" }}>{taxEnabled ? "GST ON" : "GST OFF"}</button>
+                    {taxEnabled && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: "#0F172A" }}>{data.effectiveGst} @</span>
+                        <input type="number" min="0" max="100" value={taxPct} onChange={e => setTaxPct(parseFloat(e.target.value) || 0)} style={{ ...editableFieldStyle, width: 48, textAlign: "center" }} />
+                        <span style={{ fontSize: 11, fontWeight: 600, color: "#0F172A" }}>%</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -297,75 +403,154 @@ export default function InvoiceModal({ project, totals, onClose }) {
 
           {/* === C. ITEMIZED COST TABLE === */}
           <div style={{ marginBottom: "16px", overflowX: "auto", pageBreakInside: "avoid" }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: "#fff", textTransform: "uppercase", letterSpacing: "0.04em", padding: "6px 10px", background: "#0F1E3C" }}>Itemized Cost Breakdown</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: "#fff", textTransform: "uppercase", letterSpacing: "0.04em", padding: "6px 10px", background: "#0F1E3C", flex: 1 }}>Itemized Cost Breakdown</div>
+              <button onClick={() => setUseManualItems(!useManualItems)} className="no-print" style={{ border: "1px solid #0F1E3C", borderRadius: 0, padding: "6px 10px", fontSize: 9, fontWeight: 700, cursor: "pointer", background: useManualItems ? "#0F1E3C" : "#fff", color: useManualItems ? "#fff" : "#0F1E3C", whiteSpace: "nowrap" }}>{useManualItems ? "Auto Mode" : "Manual Mode"}</button>
+            </div>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px", border: "1px solid #0F1E3C", pageBreakInside: "avoid" }}>
               <thead>
                 <tr style={{ background: "#F8FAFC" }}>
-                  {["#", "Item / Scope", "Area (sq ft)", "Rate (₹)", "Taxable Value (₹)", "Tax Amount (₹)", "Total Amount (₹)"].map(h => (
-                    <th key={h} style={{ padding: "6px 8px", textAlign: h === "Item / Scope" ? "left" : "right", fontSize: 9, fontWeight: 600, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.03em", borderBottom: "1px solid #0F1E3C", whiteSpace: "nowrap" }}>{h}</th>
+                  {["#", "Item / Scope", "Qty", "Area (sq ft)", "Rate (₹)", "Amount (₹)"].map(h => (
+                    <th key={h} style={{ padding: "6px 8px", textAlign: (h === "Item / Scope" || h === "#") ? (h === "#" ? "center" : "left") : "right", fontSize: 9, fontWeight: 600, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.03em", borderBottom: "1px solid #0F1E3C", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
+                  {useManualItems && <th style={{ padding: "6px 8px", textAlign: "center", fontSize: 9, fontWeight: 600, color: "#64748B", textTransform: "uppercase", borderBottom: "1px solid #0F1E3C" }} className="no-print">—</th>}
                 </tr>
               </thead>
               <tbody>
-                {data.itemRows.length === 0 && (
-                  <tr><td colSpan={7} style={{ padding: "16px", textAlign: "center", color: "#64748B", border: "1px solid #0F1E3C" }}>No scope data available.</td></tr>
+                {activeItems.length === 0 && (
+                  <tr><td colSpan={useManualItems ? 7 : 6} style={{ padding: "16px", textAlign: "center", color: "#64748B", border: "1px solid #0F1E3C" }}>No items. {useManualItems ? "Click \"Add Line Item\" to add one." : "No scope data available."}</td></tr>
                 )}
-                {data.itemRows.map((r, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #F1F5F9", background: i % 2 ? "#FAFBFC" : "#fff" }}>
-                    <td style={{ padding: "6px 8px", textAlign: "center", fontWeight: 500, color: "#64748B", border: "1px solid #F1F5F9" }}>{r.sr}</td>
-                    <td style={{ padding: "6px 8px", fontWeight: 500, color: "#0F172A", whiteSpace: "nowrap", border: "1px solid #F1F5F9" }}>{r.item}</td>
-                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#334155", border: "1px solid #F1F5F9" }}>{fmt2(r.area)}</td>
-                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#334155", border: "1px solid #F1F5F9" }}>{fmt(r.rate)}</td>
-                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#334155", border: "1px solid #F1F5F9" }}>{fmt(r.taxableValue)}</td>
-                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#334155", border: "1px solid #F1F5F9" }}>{fmt(r.taxAmount)}</td>
-                    <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600, color: "#0F172A", border: "1px solid #F1F5F9" }}>{fmt(r.totalAmount)}</td>
+                {activeItems.map((r, i) => (
+                  <tr key={useManualItems ? r.id : i} style={{ borderBottom: "1px solid #F1F5F9", background: i % 2 ? "#FAFBFC" : "#fff" }}>
+                    <td style={{ padding: "6px 8px", textAlign: "center", fontWeight: 500, color: "#64748B", border: "1px solid #F1F5F9" }}>{r.sr || i + 1}</td>
+                    <td style={{ padding: "6px 8px", fontWeight: 500, color: "#0F172A", border: "1px solid #F1F5F9" }}>
+                      {useManualItems ? (
+                        <input type="text" value={r.description || ""} onChange={e => updateLineItem(r.id, "description", e.target.value)} placeholder="Item description" style={{ ...editableFieldStyle, minWidth: 120 }} />
+                      ) : (
+                        <span style={{ whiteSpace: "nowrap" }}>{r.item}</span>
+                      )}
+                    </td>
+                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#334155", border: "1px solid #F1F5F9" }}>
+                      {useManualItems ? (
+                        <input type="number" min="1" value={r.qty || 1} onChange={e => updateLineItem(r.id, "qty", e.target.value)} style={{ ...editableFieldStyle, width: 50, textAlign: "right" }} />
+                      ) : (
+                        <span>1</span>
+                      )}
+                    </td>
+                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#334155", border: "1px solid #F1F5F9" }}>
+                      {useManualItems ? (
+                        <input type="number" min="0" value={r.area || 0} onChange={e => updateLineItem(r.id, "area", e.target.value)} style={{ ...editableFieldStyle, width: 60, textAlign: "right" }} />
+                      ) : (
+                        fmt2(r.area)
+                      )}
+                    </td>
+                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#334155", border: "1px solid #F1F5F9" }}>
+                      {useManualItems ? (
+                        <input type="number" min="0" value={r.rate || 0} onChange={e => updateLineItem(r.id, "rate", e.target.value)} style={{ ...editableFieldStyle, width: 70, textAlign: "right" }} />
+                      ) : (
+                        fmt(r.rate)
+                      )}
+                    </td>
+                    <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600, color: "#0F172A", border: "1px solid #F1F5F9" }}>
+                      {useManualItems ? fmt((Number(r.qty) || 1) * (Number(r.rate) || 0)) : fmt(r.taxableValue)}
+                    </td>
+                    {useManualItems && (
+                      <td style={{ padding: "6px 8px", textAlign: "center", border: "1px solid #F1F5F9" }} className="no-print">
+                        <button onClick={() => removeLineItem(r.id)} style={{ border: "none", background: "none", color: "#DC2626", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>✕</button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
+            {useManualItems && (
+              <button onClick={addLineItem} className="no-print" style={{ marginTop: 6, border: "1px dashed #94A3B8", borderRadius: 4, padding: "4px 12px", fontSize: 10, fontWeight: 700, cursor: "pointer", background: "#F8FAFC", color: "#0F1E3C" }}>+ Add Line Item</button>
+            )}
           </div>
 
           {/* === D. FINANCIAL SUMMARY === */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px", pageBreakInside: "avoid" }}>
+            {/* Left: Financial Summary with dynamic reductions/charges */}
             <div style={{ border: "1px solid #E2E8F0", borderRadius: "8px", padding: "10px 12px", background: "#FAFBFC" }}>
               <div style={{ fontSize: 10, fontWeight: 600, color: "#0F1E3C", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "8px" }}>Financial Summary</div>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ fontSize: 12, color: "#475569" }}>Subtotal</span>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>₹{fmt(data.subtotal)}</span>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>₹{fmt(calc.itemsSubtotal)}</span>
                 </div>
-                {data.additionalCharges > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 12, color: "#475569" }}>Additional Charges</span>
-                    <span style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>+ ₹{fmt(data.additionalCharges)}</span>
+
+                {/* Dynamic reductions */}
+                {reductions.map((r) => (
+                  <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}>
+                      <span style={{ fontSize: 12, color: "#DC2626" }}>−</span>
+                      <input type="text" value={r.label} onChange={e => updateReduction(r.id, "label", e.target.value)} placeholder="Discount / Reduction" style={{ ...editableFieldStyle, flex: 1 }} />
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ fontSize: 12, color: "#475569" }}>₹</span>
+                      <input type="number" min="0" value={r.amount} onChange={e => updateReduction(r.id, "amount", e.target.value)} style={{ ...editableFieldStyle, width: 70, textAlign: "right" }} />
+                      <button onClick={() => removeReduction(r.id)} className="no-print" style={{ border: "none", background: "none", color: "#DC2626", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>✕</button>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Dynamic extra charges */}
+                {extraCharges.map((r) => (
+                  <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1 }}>
+                      <span style={{ fontSize: 12, color: "#16A34A" }}>+</span>
+                      <input type="text" value={r.label} onChange={e => updateExtraCharge(r.id, "label", e.target.value)} placeholder="Extra Charge" style={{ ...editableFieldStyle, flex: 1 }} />
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ fontSize: 12, color: "#475569" }}>₹</span>
+                      <input type="number" min="0" value={r.amount} onChange={e => updateExtraCharge(r.id, "amount", e.target.value)} style={{ ...editableFieldStyle, width: 70, textAlign: "right" }} />
+                      <button onClick={() => removeExtraCharge(r.id)} className="no-print" style={{ border: "none", background: "none", color: "#DC2626", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>✕</button>
+                    </div>
+                  </div>
+                ))}
+
+                {calc.totalReductions > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #F1F5F9", paddingTop: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#DC2626" }}>Total Reductions</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#DC2626" }}>− ₹{fmt(calc.totalReductions)}</span>
                   </div>
                 )}
-                {data.discountAmount > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ fontSize: 12, color: "#DC2626" }}>Discount</span>
-                    <span style={{ fontSize: 12, fontWeight: 500, color: "#DC2626" }}>− ₹{fmt(data.discountAmount)}</span>
+                {calc.totalExtraCharges > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #F1F5F9", paddingTop: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#16A34A" }}>Total Extra Charges</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#16A34A" }}>+ ₹{fmt(calc.totalExtraCharges)}</span>
                   </div>
                 )}
+
+                {/* Add buttons (no-print) */}
+                <div className="no-print" style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                  <button onClick={addReduction} style={{ border: "1px dashed #DC2626", borderRadius: 4, padding: "3px 8px", fontSize: 9, fontWeight: 700, cursor: "pointer", background: "#FEF2F2", color: "#DC2626" }}>+ Add Discount</button>
+                  <button onClick={addExtraCharge} style={{ border: "1px dashed #16A34A", borderRadius: 4, padding: "3px 8px", fontSize: 9, fontWeight: 700, cursor: "pointer", background: "#F0FDF4", color: "#16A34A" }}>+ Add Charge</button>
+                </div>
+
                 <div style={{ borderTop: "1px solid #E2E8F0", paddingTop: "6px", display: "flex", justifyContent: "space-between" }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>Taxable Amount</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>₹{fmt(data.taxableAmount)}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#0F172A" }}>₹{fmt(calc.afterCharges)}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 12, color: "#475569" }}>{data.effectiveGst} (@{data.gstPct}%)</span>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>₹{fmt(data.gstAmount)}</span>
-                </div>
-                {data.isIGST && (
+                {taxEnabled && (
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 12, color: "#475569" }}>{data.effectiveGst} (@{taxPct}%)</span>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: "#0F172A" }}>₹{fmt(calc.gstBase)}</span>
+                  </div>
+                )}
+                {data.isIGST && taxEnabled && (
                   <div style={{ fontSize: 11, color: "#64748B", fontStyle: "italic" }}>Integrated GST (Inter-State)</div>
                 )}
               </div>
               <div style={{ borderTop: "1px solid #E2E8F0", paddingTop: "12px", marginTop: "12px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Total Project Value</span>
-                  <span style={{ fontSize: 16, fontWeight: 800, color: "#0F1E3C" }}>₹{fmt(data.grandTotal)}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>Grand Total</span>
+                  <span style={{ fontSize: 16, fontWeight: 800, color: "#0F1E3C" }}>₹{fmt(calc.grandTotal)}</span>
                 </div>
               </div>
             </div>
 
+            {/* Right: Multi-Stage Payment Ledger */}
             <div style={{ border: "1px solid #0F1E3C", borderRadius: "8px", padding: "10px 12px", background: "#FAFBFC" }}>
               <div style={{ fontSize: 10, fontWeight: 600, color: "#fff", textTransform: "uppercase", letterSpacing: "0.04em", padding: "5px 8px", background: "#0F1E3C", display: "inline-block", marginBottom: "8px" }}>Multi-Stage Payment Ledger</div>
               <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
@@ -387,15 +572,14 @@ export default function InvoiceModal({ project, totals, onClose }) {
                 </div>
               </div>
 
-              {/* 3-Stage Payment Breakdown Cards */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
                 {data.stages.map((s, i) => {
                   const isActive = !isCustomStage && i === selectedStageIdx;
                   const isCustom = isCustomStage && i === data.stages.length - 1;
                   return (
-                    <div key={s.id} style={{ 
-                      padding: "10px 8px", 
-                      border: `1.5px solid ${isActive || isCustom ? "#0F1E3C" : "#E2E8F0"}`, 
+                    <div key={s.id} style={{
+                      padding: "10px 8px",
+                      border: `1.5px solid ${isActive || isCustom ? "#0F1E3C" : "#E2E8F0"}`,
                       borderRadius: "6px",
                       background: isActive || isCustom ? "#F0F9FF" : "#fff",
                       textAlign: "center",
@@ -418,8 +602,8 @@ export default function InvoiceModal({ project, totals, onClose }) {
             <div style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{amountInWords}</div>
           </div>
 
-{/* === E. FOOTER: Bank Details | UPI QR | Signatory === */}
-          <div style={{ borderTop: "1px solid #E2E8F0", paddingTop: "12px", display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: "16px", alignItems: "flex-end", pageBreakInside: "avoid" }}>
+          {/* === E. FOOTER: Bank Details | UPI QR (toggleable) | Signatory === */}
+          <div style={{ borderTop: "1px solid #E2E8F0", paddingTop: "12px", display: "grid", gridTemplateColumns: showQrCode ? "1.2fr 1fr 1fr" : "1fr 1fr", gap: "16px", alignItems: "flex-end", pageBreakInside: "avoid" }}>
             {/* Bank Details (Left) */}
             <div style={{ fontSize: 11, color: "#475569", lineHeight: 1.6 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: "#0F1E3C", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "10px" }}>Bank Details</div>
@@ -429,33 +613,16 @@ export default function InvoiceModal({ project, totals, onClose }) {
               <div><span style={{ color: "#64748B", marginRight: "6px" }}>Branch</span><span style={{ color: "#0F172A", fontWeight: 600 }}>{bankBranch}</span></div>
             </div>
 
-            {/* UPI QR Code (Center) */}
-            <div style={{ textAlign: "center", padding: "12px", background: "#fff", border: "1px solid #E2E8F0", borderRadius: "8px" }}>
-              <div style={{ width: 64, height: 64, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 8px", borderRadius: "4px" }}>
-                <svg width="64" height="64" viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
-                  <rect width="50" height="50" fill="#fff"/>
-                  <rect x="2" y="2" width="10" height="10" fill="#0F1E3C"/><rect x="3" y="3" width="8" height="8" fill="#fff"/><rect x="4" y="4" width="6" height="6" fill="#0F1E3C"/><rect x="5" y="5" width="4" height="4" fill="#fff"/><rect x="6" y="6" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="38" y="2" width="10" height="10" fill="#0F1E3C"/><rect x="39" y="3" width="8" height="8" fill="#fff"/><rect x="40" y="4" width="6" height="6" fill="#0F1E3C"/><rect x="41" y="5" width="4" height="4" fill="#fff"/><rect x="42" y="6" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="2" y="38" width="10" height="10" fill="#0F1E3C"/><rect x="3" y="39" width="8" height="8" fill="#fff"/><rect x="4" y="40" width="6" height="6" fill="#0F1E3C"/><rect x="5" y="41" width="4" height="4" fill="#fff"/><rect x="6" y="42" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="14" y="6" width="2" height="2" fill="#0F1E3C"/><rect x="18" y="6" width="2" height="2" fill="#0F1E3C"/><rect x="22" y="6" width="2" height="2" fill="#0F1E3C"/><rect x="26" y="6" width="2" height="2" fill="#0F1E3C"/><rect x="30" y="6" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="14" y="10" width="2" height="2" fill="#0F1E3C"/><rect x="18" y="10" width="2" height="2" fill="#0F1E3C"/><rect x="22" y="10" width="2" height="2" fill="#0F1E3C"/><rect x="26" y="10" width="2" height="2" fill="#0F1E3C"/><rect x="30" y="10" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="14" y="14" width="2" height="2" fill="#0F1E3C"/><rect x="18" y="14" width="2" height="2" fill="#fff"/><rect x="22" y="14" width="2" height="2" fill="#0F1E3C"/><rect x="26" y="14" width="2" height="2" fill="#0F1E3C"/><rect x="30" y="14" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="14" y="18" width="2" height="2" fill="#0F1E3C"/><rect x="18" y="18" width="2" height="2" fill="#0F1E3C"/><rect x="22" y="18" width="2" height="2" fill="#0F1E3C"/><rect x="26" y="18" width="2" height="2" fill="#0F1E3C"/><rect x="30" y="18" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="14" y="22" width="2" height="2" fill="#0F1E3C"/><rect x="18" y="22" width="2" height="2" fill="#0F1E3C"/><rect x="22" y="22" width="2" height="2" fill="#0F1E3C"/><rect x="26" y="22" width="2" height="2" fill="#0F1E3C"/><rect x="30" y="22" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="14" y="26" width="2" height="2" fill="#0F1E3C"/><rect x="18" y="26" width="2" height="2" fill="#0F1E3C"/><rect x="22" y="26" width="2" height="2" fill="#0F1E3C"/><rect x="26" y="26" width="2" height="2" fill="#0F1E3C"/><rect x="30" y="26" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="14" y="30" width="2" height="2" fill="#0F1E3C"/><rect x="18" y="30" width="2" height="2" fill="#0F1E3C"/><rect x="22" y="30" width="2" height="2" fill="#0F1E3C"/><rect x="26" y="30" width="2" height="2" fill="#0F1E3C"/><rect x="30" y="30" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="6" y="14" width="2" height="2" fill="#0F1E3C"/><rect x="6" y="18" width="2" height="2" fill="#0F1E3C"/><rect x="6" y="22" width="2" height="2" fill="#0F1E3C"/><rect x="6" y="26" width="2" height="2" fill="#0F1E3C"/><rect x="6" y="30" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="10" y="14" width="2" height="2" fill="#0F1E3C"/><rect x="10" y="18" width="2" height="2" fill="#0F1E3C"/><rect x="10" y="22" width="2" height="2" fill="#0F1E3C"/><rect x="10" y="26" width="2" height="2" fill="#0F1E3C"/><rect x="10" y="30" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="38" y="14" width="2" height="2" fill="#0F1E3C"/><rect x="38" y="18" width="2" height="2" fill="#0F1E3C"/><rect x="38" y="22" width="2" height="2" fill="#0F1E3C"/><rect x="38" y="26" width="2" height="2" fill="#0F1E3C"/><rect x="38" y="30" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="42" y="14" width="2" height="2" fill="#0F1E3C"/><rect x="42" y="18" width="2" height="2" fill="#0F1E3C"/><rect x="42" y="22" width="2" height="2" fill="#0F1E3C"/><rect x="42" y="26" width="2" height="2" fill="#0F1E3C"/><rect x="42" y="30" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="14" y="34" width="2" height="2" fill="#0F1E3C"/><rect x="18" y="34" width="2" height="2" fill="#0F1E3C"/><rect x="22" y="34" width="2" height="2" fill="#0F1E3C"/><rect x="26" y="34" width="2" height="2" fill="#0F1E3C"/><rect x="30" y="34" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="14" y="38" width="2" height="2" fill="#0F1E3C"/><rect x="18" y="38" width="2" height="2" fill="#0F1E3C"/><rect x="22" y="38" width="2" height="2" fill="#0F1E3C"/><rect x="26" y="38" width="2" height="2" fill="#0F1E3C"/><rect x="30" y="38" width="2" height="2" fill="#0F1E3C"/>
-                  <rect x="14" y="42" width="2" height="2" fill="#0F1E3C"/><rect x="18" y="42" width="2" height="2" fill="#0F1E3C"/><rect x="22" y="42" width="2" height="2" fill="#0F1E3C"/><rect x="26" y="42" width="2" height="2" fill="#0F1E3C"/><rect x="30" y="42" width="2" height="2" fill="#0F1E3C"/>
-                </svg>
+            {/* UPI QR Code (Center) — only when toggle is ON */}
+            {showQrCode && (
+              <div style={{ textAlign: "center", padding: "12px", background: "#fff", border: "1px solid #E2E8F0", borderRadius: "8px" }}>
+                <div style={{ width: 80, height: 80, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 8px", borderRadius: "4px" }}>
+                  <QRCodeSVG value={upiString} size={80} level="M" includeMargin={false} />
+                </div>
+                <div style={{ fontSize: 9, fontWeight: 600, color: "#64748B", letterSpacing: "0.04em", textTransform: "uppercase" }}>SCAN TO PAY VIA UPI</div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: "#0F1E3C", marginTop: "2px" }}>{upiId}</div>
               </div>
-              <div style={{ fontSize: 9, fontWeight: 600, color: "#64748B", letterSpacing: "0.04em", textTransform: "uppercase" }}>SCAN TO PAY VIA UPI</div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: "#0F1E3C", marginTop: "2px" }}>{upiId}</div>
-            </div>
+            )}
 
             {/* Authorized Signatory / Digital Stamp (Right) */}
             <div style={{ textAlign: "right" }}>
@@ -525,6 +692,17 @@ export default function InvoiceModal({ project, totals, onClose }) {
                 ))}
               </div>
             </div>
+
+            {/* UPI QR Toggle */}
+            <div>
+              <label style={{ fontSize:9, fontWeight:700, color:"#64748B", letterSpacing:"0.05em", textTransform:"uppercase", display:"block", marginBottom:"4px" }}>Show / Hide Payment QR Code</label>
+              <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                <button onClick={() => setShowQrCode(!showQrCode)} style={{ width:48, height:26, borderRadius:13, border:"none", background: showQrCode ? "#0F1E3C" : "#CBD5E1", cursor:"pointer", position:"relative", transition:"background 0.2s" }}>
+                  <span style={{ position:"absolute", top:3, left: showQrCode ? 25 : 3, width:20, height:20, borderRadius:"50%", background:"#fff", transition:"left 0.2s", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }} />
+                </button>
+                <span style={{ fontSize:11, fontWeight:600, color: showQrCode ? "#0F1E3C" : "#64748B" }}>{showQrCode ? "QR Visible" : "QR Hidden"}</span>
+              </div>
+            </div>
           </div>
 
           {/* Custom Stage Inputs */}
@@ -559,7 +737,6 @@ export default function InvoiceModal({ project, totals, onClose }) {
           <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:"12px" }}>
             <div style={{ fontSize:10, fontWeight:700, color:C.navy, marginBottom:"8px", letterSpacing:"0.03em" }}>Company & Bank Configuration</div>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))", gap:"10px" }}>
-            {/* Company Name Control */}
               <div>
                 <label style={{ fontSize:8, color:"#64748B", marginBottom:"2px", display:"block" }}>Company Name</label>
                 <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="PaintShip Services" style={{ width:"100%", border:`1px solid ${C.border}`, borderRadius:6, padding:"5px 8px", fontSize:11, outline:"none", background:"#FAFAFA", boxSizing:"border-box" }} />
@@ -617,24 +794,6 @@ export default function InvoiceModal({ project, totals, onClose }) {
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function SummaryRow({ label, value, color, bold, border }) {
-  return (
-    <div style={{ display:"flex", justifyContent:"space-between", padding:border?"5px 0":"2px 0", borderTop:border?`1px solid ${C.border}`:"none" }}>
-      <span style={{ fontSize:11, color:color||"#1E293B", fontWeight:bold?"700":"500" }}>{label}</span>
-      <span style={{ fontSize:11, color:color||C.navy, fontWeight:bold?"800":"600" }}>{value}</span>
-    </div>
-  );
-}
-
-function LedgerRow({ label, value, bold, color }) {
-  return (
-    <div style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:`1px dashed ${C.border}` }}>
-      <span style={{ fontSize:11, color:color||"#1E293B", fontWeight:bold?"800":"600" }}>{label}</span>
-      <span style={{ fontSize:12, color:color||C.navy, fontWeight:bold?"900":"700" }}>{value}</span>
     </div>
   );
 }
